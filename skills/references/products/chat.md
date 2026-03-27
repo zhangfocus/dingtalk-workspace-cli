@@ -1,28 +1,93 @@
-# 机器人消息 (chat) 命令参考
+# 群聊与机器人 (chat) 命令参考
 
 ## 命令总览
 
 | 子命令 | 用途 |
 |-------|------|
-| `bot search` | 搜索我的机器人 |
+| `search` | 搜索群聊 |
+| `group create` | 创建群 |
+| `group members` | 查看群成员列表 |
+| `group members add` | 添加群成员 |
+| `group members remove` | 移除群成员（⚠️ 危险操作） |
 | `group members add-bot` | 添加机器人到群 |
+| `group rename` | 修改群名称 |
+| `bot search` | 搜索我的机器人 |
 | `message send-by-bot` | 机器人发消息（群聊或批量单聊） |
 | `message recall-by-bot` | 机器人撤回消息（群聊或批量单聊） |
 | `message send-by-webhook` | 自定义机器人 Webhook 发消息 |
 
 ---
 
-## bot search — 搜索我的机器人
+## search — 搜索群聊
 
 ```
 Usage:
-  dws chat bot search [flags]
+  dws chat search [flags]
 Example:
-  dws chat bot search --name "考勤" --format json
+  dws chat search --query "项目冲刺" --format json
 Flags:
-      --name string   机器人名称（模糊搜索）
-      --page string   页码（默认 1）
-      --size string   每页数量（默认 10）
+      --query string    搜索关键词 (必填)
+      --cursor string   分页游标（首页留空）
+```
+
+---
+
+## group create — 创建群
+
+```
+Usage:
+  dws chat group create [flags]
+Example:
+  dws chat group create --name "Q1 项目冲刺群" --users userId1,userId2,userId3 --format json
+Flags:
+      --name string    群名称 (必填)
+      --users string   群成员 userId 列表，逗号分隔 (必填)
+```
+
+> 当前用户自动作为群主加入，无需在 --users 中重复传入。
+
+---
+
+## group members — 查看群成员列表
+
+```
+Usage:
+  dws chat group members [flags]
+Example:
+  dws chat group members --id <openConversationId> --format json
+Flags:
+      --id string       群会话 ID (必填)
+      --cursor string   分页游标
+```
+
+---
+
+## group members add — 添加群成员
+
+```
+Usage:
+  dws chat group members add [flags]
+Example:
+  dws chat group members add --id <openConversationId> --users userId1,userId2 --format json
+Flags:
+      --id string      群会话 ID (必填)
+      --users string   要添加的 userId 列表，逗号分隔 (必填)
+```
+
+---
+
+## group members remove — 移除群成员
+
+> ⚠️ 危险操作：执行前必须向用户确认，同意后才加 `--yes`。
+
+```
+Usage:
+  dws chat group members remove [flags]
+Example:
+  dws chat group members remove --id <openConversationId> --users userId1,userId2 --format json
+Flags:
+      --id string      群会话 ID (必填)
+      --users string   要移除的 userId 列表，逗号分隔 (必填)
 ```
 
 ---
@@ -37,6 +102,35 @@ Example:
 Flags:
       --id string           群会话 ID (必填)
       --robot-code string   机器人 code (必填)
+```
+
+---
+
+## group rename — 修改群名称
+
+```
+Usage:
+  dws chat group rename [flags]
+Example:
+  dws chat group rename --id <openConversationId> --name "新群名" --format json
+Flags:
+      --id string     群会话 ID (必填)
+      --name string   新群名称 (必填)
+```
+
+---
+
+## bot search — 搜索我的机器人
+
+```
+Usage:
+  dws chat bot search [flags]
+Example:
+  dws chat bot search --name "考勤" --format json
+Flags:
+      --name string   机器人名称（模糊搜索）
+      --page int      页码（默认 1）
+      --size int      每页数量（默认 50）
 ```
 
 ---
@@ -68,7 +162,7 @@ Example:
     --title "通知" --text "会议已取消" --format json
 Flags:
       --robot-code string   机器人 code (必填)
-      --users string        用户 ID 列表，逗号分隔 (必填，与 --group 互斥)
+      --users string        用户 ID 列表，逗号分隔，最多 20 个 (必填，与 --group 互斥)
       --title string        消息标题 (必填)
       --text string         消息内容，支持 Markdown (必填)
 ```
@@ -130,6 +224,12 @@ Flags:
 
 ## 意图判断
 
+- 用户说"搜索一个群" → `search`
+- 用户说"帮我建个群" → `group create`
+- 用户说"看看群里有谁" → `group members`
+- 用户说"把张三拉进群" → 先 `contact user search` 获取 userId，再 `group members add`
+- 用户说"把张三移出群" → 先 `contact user search` 获取 userId，再 `group members remove`（⚠️ 需确认）
+- 用户说"改一下群名" → `group rename`
 - 用户说"让机器人在群里发通知" → `message send-by-bot --group`
 - 用户说"机器人给张三发消息" → 先 `contact user search` 获取 userId，再 `message send-by-bot --users`
 - 用户说"通过 Webhook 发告警" / 用户有 Webhook Token → `message send-by-webhook`
@@ -140,6 +240,22 @@ Flags:
 **关键区分**: `send-by-bot`(企业内部机器人，需 robotCode) vs `send-by-webhook`(自定义机器人 Webhook，需 token)
 
 ## 核心工作流
+
+```bash
+# ── 工作流: 建群并添加机器人 ──
+
+# 1. 搜索同事 userId
+dws contact user search --query "张三" --format json
+
+# 2. 创建群
+dws chat group create --name "项目群" --users <userId1>,<userId2> --format json
+
+# 3. 搜索机器人
+dws chat bot search --format json
+
+# 4. 添加机器人到群
+dws chat group members add-bot --id <openConversationId> --robot-code <code> --format json
+```
 
 ```bash
 # ── 工作流: 机器人群发消息 ──
@@ -164,5 +280,7 @@ dws chat message send-by-webhook --token <token> \
 
 | 操作 | 从返回中提取 | 用于 |
 |------|-------------|------|
+| `search` | openConversationId | `group members` / `group rename` / `group members add` / `send-by-bot --group` |
+| `group create` | openConversationId | 同上 |
 | `bot search` | robotCode | `send-by-bot` / `recall-by-bot` / `add-bot` |
 | `message send-by-bot` | processQueryKey | `recall-by-bot --keys` |

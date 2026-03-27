@@ -123,7 +123,6 @@ var extended22CoverageTargets = []string{
 	"finance",
 	"law",
 	"docparse",
-	"credit",
 }
 
 func Generate(catalog ir.Catalog) ([]Artifact, error) {

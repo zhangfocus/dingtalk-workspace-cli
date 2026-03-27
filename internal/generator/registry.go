@@ -67,7 +67,6 @@ var knownRegistryProducts = map[string]struct{}{
 	"chat":       {},
 	"conference": {},
 	"contact":    {},
-	"credit":     {},
 	"devdoc":     {},
 	"ding":       {},
 	"doc":        {},

@@ -1,6 +1,6 @@
 ---
 name: dws
-description: 管理钉钉产品能力(AI表格/日历/通讯录/机器人消息/待办/审批/考勤/日志/DING消息/工作台/开放平台文档等)。当用户需要操作表格数据、管理日程会议、查询通讯录、机器人发消息、创建待办、提交审批、查看考勤、提交日报周报（钉钉日志模版）时使用。
+description: 管理钉钉产品能力(AI表格/日历/通讯录/群聊与机器人/待办/审批/考勤/日志/DING消息/工作台/开放平台文档等)。当用户需要操作表格数据、管理日程会议、查询通讯录、管理群聊、机器人发消息、创建待办、提交审批、查看考勤、提交日报周报（钉钉日志模版）时使用。
 cli_version: ">=1.0.0"
 ---
 
@@ -28,7 +28,7 @@ cli_version: ">=1.0.0"
 | `approval`        | 审批：审批表单/发起实例/审批/撤销                                   | [simple.md](./references/products/simple.md)                   |
 | `attendance`      | 考勤：打卡记录/排班查询                                         | [attendance.md](./references/products/attendance.md)           |
 | `calendar`        | 日历：日程/参与者/会议室/闲忙查询                                   | [calendar.md](./references/products/calendar.md)               |
-| `chat`            | 机器人消息：机器人群发/单聊/撤回/Webhook/机器人搜索/添加机器人到群               | [chat.md](./references/products/chat.md)                       |
+| `chat`            | 群聊与机器人：搜索群/建群/群成员管理/改群名/机器人群发/单聊/撤回/Webhook/机器人搜索     | [chat.md](./references/products/chat.md)                       |
 | `contact`         | 通讯录：用户查询(当前用户/搜索/详情)/部门查询(搜索/子部门/成员列表)               | [contact.md](./references/products/contact.md)                 |
 | `devdoc`          | 开放平台文档：搜索开发文档                                        | [simple.md](./references/products/simple.md)                   |
 | `ding`            | DING消息：发送/撤回（应用内/短信/电话）                              | [ding.md](./references/products/ding.md)                       |
@@ -42,7 +42,7 @@ cli_version: ">=1.0.0"
 用户提到"审批/请假/报销/出差/加班" → `approval`
 用户提到"考勤/打卡/排班" → `attendance`
 用户提到"日程/日历/会议室/约会" → `calendar`
-用户提到"机器人发消息/Webhook/机器人群发/机器人单聊/通知" → `chat`
+用户提到"群聊/建群/群成员/群管理/机器人发消息/Webhook/机器人群发/机器人单聊/通知" → `chat`
 用户提到"通讯录/同事/部门/组织架构" → `contact`
 用户提到"开发/API/调用错误 文档" → `devdoc`
 用户提到"DING/紧急消息/电话提醒" → `ding`
@@ -68,6 +68,7 @@ cli_version: ">=1.0.0"
 | `calendar` | `event delete` | 删除日程，所有参与者同步取消 |
 | `calendar` | `participant delete` | 移除日程参与者 |
 | `calendar` | `room delete` | 取消会议室预定 |
+| `chat` | `group members remove` | 移除群成员 |
 | `todo` | `task delete` | 删除待办 |
 
 ### 确认流程

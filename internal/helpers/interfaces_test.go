@@ -13,11 +13,7 @@
 
 package helpers
 
-import (
-	"testing"
-
-	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/executor"
-)
+import "testing"
 
 func TestValidateNaming(t *testing.T) {
 	t.Parallel()
@@ -51,27 +47,3 @@ func TestValidateNaming(t *testing.T) {
 	}
 }
 
-func TestNewHiddenVendorCommandsIncludesDingTalk(t *testing.T) {
-	roots := NewHiddenVendorCommands(executor.EchoRunner{})
-	if len(roots) == 0 {
-		t.Fatal("NewHiddenVendorCommands() = empty, want hidden vendor roots")
-	}
-
-	var dingtalkFound bool
-	for _, root := range roots {
-		if root == nil || root.Name() != "dingtalk" {
-			continue
-		}
-		dingtalkFound = true
-		if !root.Hidden {
-			t.Fatalf("dingtalk root hidden = false, want true")
-		}
-		if len(root.Commands()) == 0 {
-			t.Fatalf("dingtalk root children = 0, want registered hidden extensions")
-		}
-	}
-
-	if !dingtalkFound {
-		t.Fatal("NewHiddenVendorCommands() missing dingtalk root")
-	}
-}

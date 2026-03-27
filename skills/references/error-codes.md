@@ -52,9 +52,10 @@
 ## chat 高频错误
 
 - 参数互斥报错 — `--group` 与 `--users` 同时传入 → 群聊用 `--group`，单聊用 `--users`，二者互斥
-- 群不存在 — openConversationId 不正确 → 确认群会话 ID 来源正确
+- 群不存在 — openConversationId 不正确 → `chat search --query "群名"` 获取正确 ID
 - 机器人无法添加到群 — 当前用户非群管理员 → 报告给用户，需群管理员操作
 - Webhook Token 无效 — token 不正确或已失效 → 确认 Webhook Token 来源正确
+- 添加/移除群成员失败 — userId 不正确或无权限 → 先 `contact user search` 确认 userId，需当前用户为群管理员
 
 ---
 

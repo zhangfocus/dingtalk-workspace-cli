@@ -332,10 +332,8 @@ func asyncRevalidateRegistry(parent context.Context, store *cache.Store, partiti
 	}
 }
 
-func newLegacyHiddenCommands(runner executor.Runner) []*cobra.Command {
-	var commands []*cobra.Command
-	commands = append(commands, helpers.NewHiddenVendorCommands(runner)...)
-	return commands
+func newLegacyHiddenCommands(_ executor.Runner) []*cobra.Command {
+	return nil
 }
 
 func mergeTopLevelCommands(commands []*cobra.Command) []*cobra.Command {

@@ -60,8 +60,6 @@ func (chatHandler) Command(runner executor.Runner) *cobra.Command {
 		},
 	}
 	message.AddCommand(
-		newChatMessageListCommand(runner),
-		newChatMessageSendCommand(runner),
 		newChatMessageSendByBotCommand(runner),
 		newChatMessageRecallByBotCommand(runner),
 		newChatMessageSendByWebhookCommand(runner),
@@ -81,40 +79,6 @@ func (chatHandler) Command(runner executor.Runner) *cobra.Command {
 
 	root.AddCommand(message, newChatSearchCommand(runner), newChatGroupCommand(runner), bot)
 	return root
-}
-
-func newChatMessageListCommand(runner executor.Runner) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:               "list",
-		Short:             "拉取会话消息内容",
-		Args:              cobra.NoArgs,
-		DisableAutoGenTag: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			params, tool, err := buildChatMessageListInvocation(cmd)
-			if err != nil {
-				return err
-			}
-
-			result, err := runner.Run(cmd.Context(), executor.NewHelperInvocation(
-				cobracmd.LegacyCommandPath(cmd),
-				"chat",
-				tool,
-				params,
-			))
-			if err != nil {
-				return err
-			}
-			return writeCommandPayload(cmd, result)
-		},
-	}
-	preferLegacyLeaf(cmd)
-
-	cmd.Flags().String("group", "", "群会话 openconversation_id (群聊必填)")
-	cmd.Flags().Bool("forward", true, "true=正序拉取, false=倒序拉取")
-	cmd.Flags().Int("limit", 0, "返回条数，不传为不限制")
-	cmd.Flags().String("time", "", "起始时间，格式: yyyy-MM-dd HH:mm:ss")
-	cmd.Flags().String("user", "", "单聊对方 userId (单聊必填)")
-	return cmd
 }
 
 func newChatMessageSendByBotCommand(runner executor.Runner) *cobra.Command {
@@ -287,47 +251,6 @@ func newChatGroupCreateCommand(runner executor.Runner) *cobra.Command {
 	cmd.Flags().String("name", "", "群名称 (必填)")
 	cmd.Flags().String("users", "", "群成员 userId 列表，逗号分隔 (必填)")
 	return cmd
-}
-
-func buildChatMessageListInvocation(cmd *cobra.Command) (map[string]any, string, error) {
-	group, err := cmd.Flags().GetString("group")
-	if err != nil {
-		return nil, "", apperrors.NewInternal("failed to read --group")
-	}
-	user, err := cmd.Flags().GetString("user")
-	if err != nil {
-		return nil, "", apperrors.NewInternal("failed to read --user")
-	}
-	timeValue, err := cmd.Flags().GetString("time")
-	if err != nil {
-		return nil, "", apperrors.NewInternal("failed to read --time")
-	}
-	if strings.TrimSpace(timeValue) == "" {
-		return nil, "", apperrors.NewValidation("--time is required")
-	}
-	if err := ensureExactlyOneTarget(group, user, "--group", "--user"); err != nil {
-		return nil, "", err
-	}
-
-	params := map[string]any{
-		"forward": cmd.Flag("forward").Value.String() == "true",
-		"time":    timeValue,
-	}
-	limit, err := cmd.Flags().GetInt("limit")
-	if err != nil {
-		return nil, "", apperrors.NewInternal("failed to read --limit")
-	}
-	if limit > 0 {
-		params["limit"] = limit
-	}
-
-	if strings.TrimSpace(group) != "" {
-		params["openconversation_id"] = group
-		return params, "list_conversation_message_v2", nil
-	}
-
-	params["userId"] = user
-	return params, "list_individual_chat_message", nil
 }
 
 func buildChatMessageSendByBotInvocation(cmd *cobra.Command) (map[string]any, string, error) {
@@ -507,62 +430,6 @@ func helperResponseContent(result executor.Result) map[string]any {
 	}
 	content, _ := result.Response["content"].(map[string]any)
 	return content
-}
-
-// ── message send (user identity) ───────────────────────────
-
-func newChatMessageSendCommand(runner executor.Runner) *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   "send",
-		Short: "以当前用户身份发送消息（--group 群聊 / --user 单聊）",
-		Long:  "--group 指定群会话 ID 发送群消息；--user 指定用户 ID 发送单聊消息。二者只能选其一。",
-		Example: `  dws chat message send --group <openconversation_id> "hello"
-  dws chat message send --user <userId> "请查收"`,
-		Args:              cobra.ExactArgs(1),
-		DisableAutoGenTag: true,
-		RunE: func(cmd *cobra.Command, args []string) error {
-			groupID, _ := cmd.Flags().GetString("group")
-			userID, _ := cmd.Flags().GetString("user")
-			if err := ensureExactlyOneTarget(groupID, userID, "--group", "--user"); err != nil {
-				return err
-			}
-			text := args[0]
-			title, _ := cmd.Flags().GetString("title")
-			if strings.TrimSpace(groupID) != "" {
-				params := map[string]any{
-					"openConversation_id": groupID,
-					"title":               title,
-					"text":                text,
-					"clawType":            "default",
-				}
-				result, err := runner.Run(cmd.Context(), executor.NewHelperInvocation(
-					cobracmd.LegacyCommandPath(cmd), "chat", "send_message_as_user", params,
-				))
-				if err != nil {
-					return err
-				}
-				return writeCommandPayload(cmd, result)
-			}
-			params := map[string]any{
-				"receiverUserId": userID,
-				"title":          title,
-				"text":           text,
-				"clawType":       "default",
-			}
-			result, err := runner.Run(cmd.Context(), executor.NewHelperInvocation(
-				cobracmd.LegacyCommandPath(cmd), "chat", "send_direct_message_as_user", params,
-			))
-			if err != nil {
-				return err
-			}
-			return writeCommandPayload(cmd, result)
-		},
-	}
-	preferLegacyLeaf(cmd)
-	cmd.Flags().String("group", "", "群会话 openconversation_id (群聊必填)")
-	cmd.Flags().String("user", "", "接收者 userId (单聊必填)")
-	cmd.Flags().String("title", "Message", "消息标题 (可选, 默认 'Message')")
-	return cmd
 }
 
 // ── message recall-by-bot ──────────────────────────────────

@@ -50,15 +50,9 @@ const (
 	nameMaxLen   = 50
 )
 
-type hiddenExtensionFactory struct {
-	manifest Manifest
-	factory  Factory
-}
-
 var (
-	registryMu            sync.Mutex
-	publicFactories       []Factory
-	hiddenVendorFactories []hiddenExtensionFactory
+	registryMu      sync.Mutex
+	publicFactories []Factory
 )
 
 func RegisterPublic(factory Factory) {
@@ -67,97 +61,8 @@ func RegisterPublic(factory Factory) {
 	publicFactories = append(publicFactories, factory)
 }
 
-func RegisterHiddenVendor(vendor string, factory Factory) {
-	if factory == nil {
-		panic("helpers: hidden vendor factory is nil")
-	}
-	handler := factory()
-	if handler == nil {
-		panic("helpers: hidden vendor handler is nil")
-	}
-
-	manifest := Manifest{
-		Vendor: strings.TrimSpace(vendor),
-		Name:   strings.TrimSpace(handler.Name()),
-	}
-	if err := ValidateNaming(manifest.Vendor, manifest.Name); err != nil {
-		panic(fmt.Sprintf("helpers: invalid hidden vendor extension %s: %v", manifest.FullName(), err))
-	}
-
-	registryMu.Lock()
-	defer registryMu.Unlock()
-	hiddenVendorFactories = append(hiddenVendorFactories, hiddenExtensionFactory{
-		manifest: manifest,
-		factory:  factory,
-	})
-}
-
-func RegisterHiddenDingTalk(factory Factory) {
-	RegisterHiddenVendor("dingtalk", factory)
-}
-
 func NewPublicCommands(runner executor.Runner) []*cobra.Command {
 	return buildCommands(publicFactories, runner)
-}
-
-func NewHiddenVendorCommands(runner executor.Runner) []*cobra.Command {
-	registryMu.Lock()
-	factories := append([]hiddenExtensionFactory(nil), hiddenVendorFactories...)
-	registryMu.Unlock()
-
-	if len(factories) == 0 {
-		return nil
-	}
-
-	byVendor := make(map[string][]*cobra.Command)
-	for _, registered := range factories {
-		handler := registered.factory()
-		if handler == nil {
-			continue
-		}
-		command := handler.Command(runner)
-		if command == nil {
-			continue
-		}
-		byVendor[registered.manifest.Vendor] = append(byVendor[registered.manifest.Vendor], command)
-	}
-
-	vendors := make([]string, 0, len(byVendor))
-	for vendor := range byVendor {
-		vendors = append(vendors, vendor)
-	}
-	sort.Strings(vendors)
-
-	roots := make([]*cobra.Command, 0, len(vendors))
-	for _, vendor := range vendors {
-		commands := byVendor[vendor]
-		sort.Slice(commands, func(i, j int) bool {
-			return commands[i].Use < commands[j].Use
-		})
-		root := &cobra.Command{
-			Use:               vendor,
-			Short:             fmt.Sprintf("Hidden %s vendor extensions", vendor),
-			Hidden:            true,
-			Args:              cobra.NoArgs,
-			TraverseChildren:  true,
-			DisableAutoGenTag: true,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				return cmd.Help()
-			},
-		}
-		root.AddCommand(commands...)
-		roots = append(roots, root)
-	}
-	return roots
-}
-
-func NewHiddenDingTalkCommand(runner executor.Runner) *cobra.Command {
-	for _, root := range NewHiddenVendorCommands(runner) {
-		if root != nil && root.Name() == "dingtalk" {
-			return root
-		}
-	}
-	return nil
 }
 
 func buildCommands(factories []Factory, runner executor.Runner) []*cobra.Command {
