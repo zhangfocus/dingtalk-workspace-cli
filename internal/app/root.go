@@ -69,6 +69,33 @@ func isUnknownCommandError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "unknown command")
 }
 
+// flagErrorWithSuggestions provides helpful suggestions for common flag mistakes.
+func flagErrorWithSuggestions(cmd *cobra.Command, err error) error {
+	errMsg := err.Error()
+
+	// Common flag aliases and suggestions
+	suggestions := map[string]string{
+		"--json":        "提示: 请使用 --format json 或 -f json 来输出 JSON 格式",
+		"--method":      "提示: dws auth login 默认使用 OAuth 设备流登录，无需指定 --method",
+		"--device-flow": "提示: dws auth login 默认已使用设备流，无需 --device-flow 参数",
+		"--email":       "提示: dws 不支持邮箱/密码登录，请使用 dws auth login 进行扫码登录",
+		"--code":        "提示: dws 不支持验证码登录，请使用 dws auth login 进行扫码登录",
+		"--corp-id":     "提示: corp-id 会在登录时自动获取，无需手动指定",
+		"--password":    "提示: dws 不支持密码登录，请使用 dws auth login 进行扫码登录",
+		"--phone":       "提示: dws 不支持手机号登录，请使用 dws auth login 进行扫码登录",
+		"--app-key":     "提示: 请使用环境变量 DWS_CLIENT_ID 或 --client-id 设置 AppKey",
+		"--app-secret":  "提示: 请使用环境变量 DWS_CLIENT_SECRET 或 --client-secret 设置 AppSecret",
+	}
+
+	for flag, suggestion := range suggestions {
+		if strings.Contains(errMsg, "unknown flag: "+flag) {
+			return fmt.Errorf("%w\n%s", err, suggestion)
+		}
+	}
+
+	return err
+}
+
 func printExecutionError(root *cobra.Command, stdout, stderr io.Writer, err error) error {
 	if wantsJSONErrors(root) {
 		return apperrors.PrintJSON(stdout, err)
@@ -169,6 +196,9 @@ func NewRootCommand(ctx ...context.Context) *cobra.Command {
 			return closeOutputSink(cmd)
 		},
 	}
+
+	// Set custom flag error handler for better UX
+	root.SetFlagErrorFunc(flagErrorWithSuggestions)
 
 	bindPersistentFlags(root, flags)
 
