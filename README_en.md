@@ -18,6 +18,8 @@ Access contacts, calendar, todos, attendance, AI tables and more with zero boile
   <a href="https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases"><img src="https://img.shields.io/badge/release-v1.0.0-red" alt="v1.0.0"></a>
 </p>
 
+[中文版](./README.md) | [English](./README_en.md)
+
 ## Contents
 
 - [Why dws?](#why-dws)

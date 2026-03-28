@@ -18,6 +18,8 @@
   <a href="https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli/releases"><img src="https://img.shields.io/badge/release-v1.0.0-red" alt="v1.0.0"></a>
 </p>
 
+[中文版](./README.md) | [English](./README_en.md)
+
 ## 目录
 
 - [为什么选择 dws？](#why-dws)
