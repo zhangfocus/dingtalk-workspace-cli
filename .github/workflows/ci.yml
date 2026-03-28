@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install archive tooling
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
+
+      - name: Build
+        run: make build
+
+      - name: Format Check
+        run: |
+          unformatted="$(find cmd hack internal test -name '*.go' -print0 | xargs -0r gofmt -l)"
+          test -z "$unformatted" || (printf '%s\n' "$unformatted" && exit 1)
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+          args: ./...
+
+      - name: Test
+        run: make test
+
+      - name: Policy
+        run: make policy
+
+      - name: Generated Drift
+        run: ./scripts/policy/check-generated-drift.sh
