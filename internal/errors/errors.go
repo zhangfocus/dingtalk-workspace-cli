@@ -14,13 +14,12 @@
 package errors
 
 import (
+	"bytes"
 	"encoding/json"
 	stderrors "errors"
 	"fmt"
 	"io"
 	"strings"
-
-	"bytes"
 )
 
 // Category represents a stable error class with a documented exit code.
@@ -36,18 +35,19 @@ const (
 
 // Error is the structured repository-local error model for the Go rewrite.
 type Error struct {
-	Category  Category
-	Message   string
-	Operation string
-	ServerKey string
-	Retryable bool
-	Reason    string
-	Hint      string
-	Actions   []string
-	Snapshot  string
-	RPCCode   int             `json:"rpc_code,omitempty"`
-	RPCData   json.RawMessage `json:"rpc_data,omitempty"`
-	Cause     error           `json:"-"`
+	Category   Category
+	Message    string
+	Operation  string
+	ServerKey  string
+	Retryable  bool
+	Reason     string
+	Hint       string
+	Actions    []string
+	Snapshot   string
+	RPCCode    int               `json:"rpc_code,omitempty"`
+	RPCData    json.RawMessage   `json:"rpc_data,omitempty"`
+	ServerDiag ServerDiagnostics `json:"-"`
+	Cause      error             `json:"-"`
 }
 
 func (e *Error) Error() string {
@@ -247,6 +247,17 @@ func PrintJSON(w io.Writer, err error) error {
 				errorPayload["rpc_data"] = parsed
 			}
 		}
+		if !typed.ServerDiag.IsEmpty() {
+			if typed.ServerDiag.TraceID != "" {
+				errorPayload["trace_id"] = typed.ServerDiag.TraceID
+			}
+			if typed.ServerDiag.ServerErrorCode != "" {
+				errorPayload["server_error_code"] = typed.ServerDiag.ServerErrorCode
+			}
+			if typed.ServerDiag.TechnicalDetail != "" {
+				errorPayload["technical_detail"] = typed.ServerDiag.TechnicalDetail
+			}
+		}
 		if typed.Cause != nil {
 			errorPayload["cause"] = typed.Cause.Error()
 		}
@@ -263,8 +274,25 @@ func PrintJSON(w io.Writer, err error) error {
 	return writeErr
 }
 
-// PrintHuman writes a concise human-readable error rendering.
+// Verbosity controls how much detail PrintHuman includes.
+type Verbosity int
+
+const (
+	// VerbosityNormal shows essential info: error, hint, actions, trace_id, server_code.
+	VerbosityNormal Verbosity = 0
+	// VerbosityVerbose adds technical_detail, snapshot, execution context.
+	VerbosityVerbose Verbosity = 1
+	// VerbosityDebug adds all internal diagnostics (category, operation, reason, rpc_code).
+	VerbosityDebug Verbosity = 2
+)
+
+// PrintHuman writes a concise human-readable error rendering at normal verbosity.
 func PrintHuman(w io.Writer, err error) error {
+	return PrintHumanAt(w, err, VerbosityNormal)
+}
+
+// PrintHumanAt writes a human-readable error rendering at the given verbosity level.
+func PrintHumanAt(w io.Writer, err error, v Verbosity) error {
 	if err == nil {
 		return nil
 	}
@@ -275,18 +303,12 @@ func PrintHuman(w io.Writer, err error) error {
 		return writeErr
 	}
 
+	// Line 1: Error summary
 	lines := []string{
 		fmt.Sprintf("Error: [%s] %s", strings.ToUpper(string(typed.Category)), typed.Message),
 	}
-	if typed.Reason != "" {
-		lines = append(lines, fmt.Sprintf("Reason: %s", typed.Reason))
-	}
-	if typed.Operation != "" {
-		lines = append(lines, fmt.Sprintf("Operation: %s", typed.Operation))
-	}
-	if typed.ServerKey != "" {
-		lines = append(lines, fmt.Sprintf("Server: %s", typed.ServerKey))
-	}
+
+	// Always shown: hint, actions, retryable
 	if typed.Hint != "" {
 		lines = append(lines, fmt.Sprintf("Hint: %s", typed.Hint))
 	}
@@ -298,20 +320,48 @@ func PrintHuman(w io.Writer, err error) error {
 			lines = append(lines, fmt.Sprintf("Action: %s", action))
 		}
 	}
-	if typed.Snapshot != "" {
-		lines = append(lines, fmt.Sprintf("Snapshot: %s", typed.Snapshot))
-	}
-	if typed.RPCCode != 0 {
-		lines = append(lines, fmt.Sprintf("RPC Code: %d", typed.RPCCode))
-	}
-	if len(typed.RPCData) > 0 {
-		lines = append(lines, fmt.Sprintf("RPC Data: %s", string(typed.RPCData)))
-	}
-	if typed.Cause != nil {
-		lines = append(lines, fmt.Sprintf("Cause: %s", typed.Cause.Error()))
-	}
 	if typed.Retryable {
 		lines = append(lines, "Retryable: true")
+	}
+
+	// Always shown when present: Trace ID, Server Code
+	if typed.ServerDiag.TraceID != "" {
+		lines = append(lines, fmt.Sprintf("Trace ID: %s", typed.ServerDiag.TraceID))
+	}
+	if typed.ServerDiag.ServerErrorCode != "" {
+		lines = append(lines, fmt.Sprintf("Server Code: %s", typed.ServerDiag.ServerErrorCode))
+	}
+
+	// Verbose+: technical detail, snapshot, reason, server key
+	if v >= VerbosityVerbose {
+		if typed.ServerDiag.TechnicalDetail != "" {
+			lines = append(lines, fmt.Sprintf("Detail: %s", typed.ServerDiag.TechnicalDetail))
+		}
+		if typed.Reason != "" {
+			lines = append(lines, fmt.Sprintf("Reason: %s", typed.Reason))
+		}
+		if typed.ServerKey != "" {
+			lines = append(lines, fmt.Sprintf("Server: %s", typed.ServerKey))
+		}
+		if typed.Snapshot != "" {
+			lines = append(lines, fmt.Sprintf("Snapshot: %s", typed.Snapshot))
+		}
+		if typed.Cause != nil {
+			lines = append(lines, fmt.Sprintf("Cause: %s", typed.Cause.Error()))
+		}
+	}
+
+	// Debug: all internal diagnostics
+	if v >= VerbosityDebug {
+		if typed.Operation != "" {
+			lines = append(lines, fmt.Sprintf("Operation: %s", typed.Operation))
+		}
+		if typed.RPCCode != 0 {
+			lines = append(lines, fmt.Sprintf("RPC Code: %d", typed.RPCCode))
+		}
+		if len(typed.RPCData) > 0 {
+			lines = append(lines, fmt.Sprintf("RPC Data: %s", string(typed.RPCData)))
+		}
 	}
 
 	_, writeErr := fmt.Fprintln(w, strings.Join(lines, "\n"))

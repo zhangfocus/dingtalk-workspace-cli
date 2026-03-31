@@ -155,12 +155,14 @@ func (r *runtimeRunner) executeInvocation(ctx context.Context, endpoint string, 
 	}
 
 	if callResult.IsError {
+		diag := transport.ExtractServerDiagnosticsFromMap(callResult.Content)
 		mcpErr := apperrors.NewAPI(
 			extractMCPErrorMessage(callResult),
 			apperrors.WithOperation("tools/call"),
 			apperrors.WithReason("mcp_tool_error"),
 			apperrors.WithServerKey(invocation.CanonicalProduct),
 			apperrors.WithHint("MCP tool returned a business error; check tool parameters and refer to skill documentation."),
+			apperrors.WithServerDiag(diag),
 		)
 		captureRuntimeFailure(invocation, mcpErr, mcpErr)
 		return executor.Result{}, mcpErr
@@ -172,11 +174,13 @@ func (r *runtimeRunner) executeInvocation(ctx context.Context, endpoint string, 
 	}
 
 	if bizErr := detectBusinessError(callResult.Content); bizErr != "" {
+		diag := transport.ExtractServerDiagnosticsFromMap(callResult.Content)
 		return executor.Result{}, apperrors.NewAPI(bizErr,
 			apperrors.WithOperation("tools/call"),
 			apperrors.WithReason("business_error"),
 			apperrors.WithServerKey(invocation.CanonicalProduct),
 			apperrors.WithHint("The API returned a business-level error. Check required parameters and values."),
+			apperrors.WithServerDiag(diag),
 		)
 	}
 

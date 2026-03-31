@@ -13,7 +13,11 @@
 
 package logging
 
-import "testing"
+import (
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestIsSensitiveKey(t *testing.T) {
 	t.Parallel()
@@ -65,6 +69,100 @@ func TestRedactValue(t *testing.T) {
 			t.Parallel()
 			if got := RedactValue(tt.input); got != tt.want {
 				t.Errorf("RedactValue(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestTruncateBody(t *testing.T) {
+	t.Parallel()
+	short := []byte("hello")
+	if got := TruncateBody(short, 100); got != "hello" {
+		t.Fatalf("expected no truncation, got %q", got)
+	}
+	long := []byte(strings.Repeat("a", 200))
+	got := TruncateBody(long, 50)
+	if !strings.Contains(got, "truncated") {
+		t.Fatalf("expected truncation marker, got %q", got)
+	}
+	if !strings.Contains(got, "total=200") {
+		t.Fatalf("expected total size, got %q", got)
+	}
+}
+
+func TestTruncateBody_Empty(t *testing.T) {
+	t.Parallel()
+	if got := TruncateBody(nil, 100); got != "" {
+		t.Fatalf("expected empty, got %q", got)
+	}
+}
+
+func TestSanitizeArguments(t *testing.T) {
+	t.Parallel()
+	args := map[string]any{
+		"name":     "test",
+		"password": "secret123",
+		"nested": map[string]any{
+			"api_key": "key-value",
+			"safe":    "ok",
+		},
+	}
+	got := SanitizeArguments(args, 4096)
+	if strings.Contains(got, "secret123") {
+		t.Fatalf("password should be redacted: %s", got)
+	}
+	if strings.Contains(got, "key-value") {
+		t.Fatalf("api_key should be redacted: %s", got)
+	}
+	if !strings.Contains(got, "test") {
+		t.Fatalf("non-sensitive value should remain: %s", got)
+	}
+}
+
+func TestSanitizeArguments_Empty(t *testing.T) {
+	t.Parallel()
+	if got := SanitizeArguments(nil, 100); got != "{}" {
+		t.Fatalf("expected {}, got %q", got)
+	}
+}
+
+func TestRedactHeaders(t *testing.T) {
+	t.Parallel()
+	headers := http.Header{
+		"Authorization": {"Bearer token123456"},
+		"Content-Type":  {"application/json"},
+	}
+	attrs := RedactHeaders(headers)
+	if len(attrs) != 2 {
+		t.Fatalf("expected 2 attrs, got %d", len(attrs))
+	}
+	for _, attr := range attrs {
+		if attr.Key == "header.authorization" && !strings.Contains(attr.Value.String(), "***") {
+			t.Fatalf("authorization should be redacted: %s", attr.Value.String())
+		}
+		if attr.Key == "header.content-type" && attr.Value.String() != "application/json" {
+			t.Fatalf("content-type should not be redacted: %s", attr.Value.String())
+		}
+	}
+}
+
+func TestIsSensitiveKey_Substrings(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		key  string
+		want bool
+	}{
+		{"x-api-token", true},
+		{"user_password_hash", true},
+		{"my_secret_key", true},
+		{"x-credential-id", true},
+		{"safe-header", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			t.Parallel()
+			if got := IsSensitiveKey(tt.key); got != tt.want {
+				t.Errorf("IsSensitiveKey(%q) = %v, want %v", tt.key, got, tt.want)
 			}
 		})
 	}

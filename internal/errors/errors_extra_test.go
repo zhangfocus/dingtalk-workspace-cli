@@ -94,18 +94,29 @@ func TestPrintJSON_AllFields(t *testing.T) {
 	}
 }
 
-func TestPrintHuman_WithCause(t *testing.T) {
+func TestPrintHuman_WithCause_Verbose(t *testing.T) {
+	t.Parallel()
+	cause := fmt.Errorf("timeout")
+	e := &Error{Category: CategoryDiscovery, Message: "discovery failed", Cause: cause}
+	var buf bytes.Buffer
+	PrintHumanAt(&buf, e, VerbosityVerbose)
+	if !strings.Contains(buf.String(), "timeout") {
+		t.Fatalf("expected cause in verbose human output: %s", buf.String())
+	}
+}
+
+func TestPrintHuman_WithCause_NormalHidesCause(t *testing.T) {
 	t.Parallel()
 	cause := fmt.Errorf("timeout")
 	e := &Error{Category: CategoryDiscovery, Message: "discovery failed", Cause: cause}
 	var buf bytes.Buffer
 	PrintHuman(&buf, e)
-	if !strings.Contains(buf.String(), "timeout") {
-		t.Fatalf("expected cause in human output: %s", buf.String())
+	if strings.Contains(buf.String(), "Cause:") {
+		t.Fatalf("normal mode should not show Cause: %s", buf.String())
 	}
 }
 
-func TestPrintHuman_AllFields(t *testing.T) {
+func TestPrintHuman_AllFields_Debug(t *testing.T) {
 	t.Parallel()
 	e := NewAPI("api error",
 		WithOperation("initialize"),
@@ -120,11 +131,11 @@ func TestPrintHuman_AllFields(t *testing.T) {
 		WithCause(fmt.Errorf("network")),
 	)
 	var buf bytes.Buffer
-	PrintHuman(&buf, e)
+	PrintHumanAt(&buf, e, VerbosityDebug)
 	out := buf.String()
 	for _, expected := range []string{"API", "initialize", "connection_refused", "doc", "check network", "run again", "snap", "-32601", "network", "Retryable"} {
 		if !strings.Contains(out, expected) {
-			t.Fatalf("missing %q in human output: %s", expected, out)
+			t.Fatalf("missing %q in debug human output: %s", expected, out)
 		}
 	}
 }

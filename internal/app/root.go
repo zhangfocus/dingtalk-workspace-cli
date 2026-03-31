@@ -117,7 +117,21 @@ func printExecutionError(root *cobra.Command, stdout, stderr io.Writer, err erro
 	if wantsJSONErrors(root) {
 		return apperrors.PrintJSON(stdout, err)
 	}
-	return apperrors.PrintHuman(stderr, err)
+	return apperrors.PrintHumanAt(stderr, err, resolveVerbosity(root))
+}
+
+// resolveVerbosity derives the error verbosity level from the root command's flags.
+func resolveVerbosity(root *cobra.Command) apperrors.Verbosity {
+	if root == nil {
+		return apperrors.VerbosityNormal
+	}
+	if debug, err := root.PersistentFlags().GetBool("debug"); err == nil && debug {
+		return apperrors.VerbosityDebug
+	}
+	if verbose, err := root.PersistentFlags().GetBool("verbose"); err == nil && verbose {
+		return apperrors.VerbosityVerbose
+	}
+	return apperrors.VerbosityNormal
 }
 
 func wantsJSONErrors(root *cobra.Command) bool {

@@ -81,7 +81,7 @@ func TestPrintHuman(t *testing.T) {
 	t.Parallel()
 
 	var b strings.Builder
-	if err := PrintHuman(&b, NewValidation(
+	if err := PrintHumanAt(&b, NewValidation(
 		"bad flag",
 		WithReason("missing_required_flag"),
 		WithOperation("calendar.list"),
@@ -90,7 +90,7 @@ func TestPrintHuman(t *testing.T) {
 		WithRetryable(true),
 		WithActions("retry command"),
 		WithSnapshot("/tmp/dws-recovery/snapshot.json"),
-	)); err != nil {
+	), VerbosityVerbose); err != nil {
 		t.Fatalf("PrintHuman() error = %v", err)
 	}
 
@@ -108,10 +108,61 @@ func TestPrintHuman(t *testing.T) {
 		t.Fatalf("expected action in output, got %q", got)
 	}
 	if !strings.Contains(got, "Snapshot: /tmp/dws-recovery/snapshot.json") {
-		t.Fatalf("expected snapshot in output, got %q", got)
+		t.Fatalf("expected snapshot in verbose output, got %q", got)
 	}
 	if !strings.Contains(got, "Retryable: true") {
 		t.Fatalf("expected retryable marker in output, got %q", got)
+	}
+}
+
+func TestPrintHuman_NormalMode(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	PrintHuman(&b, NewValidation(
+		"bad flag",
+		WithHint("fix it"),
+		WithRetryable(true),
+		WithActions("retry"),
+		WithServerDiag(ServerDiagnostics{TraceID: "trace-abc", ServerErrorCode: "PARAM_ERROR"}),
+	))
+
+	got := b.String()
+	if !strings.Contains(got, "Error: [VALIDATION] bad flag") {
+		t.Fatalf("expected header, got %q", got)
+	}
+	if !strings.Contains(got, "Trace ID: trace-abc") {
+		t.Fatalf("expected trace id in normal output, got %q", got)
+	}
+	if !strings.Contains(got, "Server Code: PARAM_ERROR") {
+		t.Fatalf("expected server code in normal output, got %q", got)
+	}
+}
+
+func TestPrintJSONIncludesServerDiag(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	if err := PrintJSON(&b, NewAPI(
+		"server error",
+		WithServerDiag(ServerDiagnostics{
+			TraceID:         "trace-xyz",
+			ServerErrorCode: "TIMEOUT_ERROR",
+			TechnicalDetail: "deadline exceeded",
+		}),
+	)); err != nil {
+		t.Fatalf("PrintJSON() error = %v", err)
+	}
+
+	got := b.String()
+	if !strings.Contains(got, `"trace_id": "trace-xyz"`) {
+		t.Fatalf("expected trace_id in output, got %q", got)
+	}
+	if !strings.Contains(got, `"server_error_code": "TIMEOUT_ERROR"`) {
+		t.Fatalf("expected server_error_code in output, got %q", got)
+	}
+	if !strings.Contains(got, `"technical_detail": "deadline exceeded"`) {
+		t.Fatalf("expected technical_detail in output, got %q", got)
 	}
 }
 
@@ -137,23 +188,38 @@ func TestPrintJSONIncludesRPCCodeAndData(t *testing.T) {
 	}
 }
 
-func TestPrintHumanIncludesRPCCode(t *testing.T) {
+func TestPrintHumanIncludesRPCCode_Debug(t *testing.T) {
 	t.Parallel()
 
 	var b strings.Builder
-	if err := PrintHuman(&b, NewValidation(
+	if err := PrintHumanAt(&b, NewValidation(
 		"invalid params",
 		WithRPCCode(-32602),
 		WithRPCData([]byte(`"missing field"`)),
-	)); err != nil {
+	), VerbosityDebug); err != nil {
 		t.Fatalf("PrintHuman() error = %v", err)
 	}
 
 	got := b.String()
 	if !strings.Contains(got, "RPC Code: -32602") {
-		t.Fatalf("expected RPC Code in output, got %q", got)
+		t.Fatalf("expected RPC Code in debug output, got %q", got)
 	}
 	if !strings.Contains(got, "RPC Data:") {
-		t.Fatalf("expected RPC Data in output, got %q", got)
+		t.Fatalf("expected RPC Data in debug output, got %q", got)
+	}
+}
+
+func TestPrintHumanHidesRPCCode_Normal(t *testing.T) {
+	t.Parallel()
+
+	var b strings.Builder
+	PrintHuman(&b, NewValidation(
+		"invalid params",
+		WithRPCCode(-32602),
+	))
+
+	got := b.String()
+	if strings.Contains(got, "RPC Code:") {
+		t.Fatalf("normal mode should not show RPC Code, got %q", got)
 	}
 }

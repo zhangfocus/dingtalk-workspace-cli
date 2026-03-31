@@ -10,7 +10,7 @@ import (
 )
 
 func TestHTTPStatusErrorIncludesCallMetadata(t *testing.T) {
-	err := httpStatusError("tools/call", "https://mcp.dingtalk.com/server", http.StatusTooManyRequests, "")
+	err := httpStatusError("tools/call", "https://mcp.dingtalk.com/server", http.StatusTooManyRequests, "", "")
 
 	var callErr *CallError
 	if !errors.As(err, &callErr) {
@@ -33,7 +33,7 @@ func TestHTTPStatusErrorIncludesCallMetadata(t *testing.T) {
 }
 
 func TestJSONRPCEnvelopeErrorIncludesCallMetadata(t *testing.T) {
-	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32602, Message: "invalid params"}, "")
+	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32602, Message: "invalid params"}, "", "")
 
 	var callErr *CallError
 	if !errors.As(err, &callErr) {

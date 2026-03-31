@@ -199,7 +199,7 @@ func TestLooksAuthRPCError(t *testing.T) {
 
 func TestJsonrpcEnvelopeError_InvalidParams(t *testing.T) {
 	t.Parallel()
-	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32602, Message: "invalid params"}, "")
+	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32602, Message: "invalid params"}, "", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -207,7 +207,7 @@ func TestJsonrpcEnvelopeError_InvalidParams(t *testing.T) {
 
 func TestJsonrpcEnvelopeError_AuthError(t *testing.T) {
 	t.Parallel()
-	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: 401, Message: "Unauthorized"}, "")
+	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: 401, Message: "Unauthorized"}, "", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -215,7 +215,7 @@ func TestJsonrpcEnvelopeError_AuthError(t *testing.T) {
 
 func TestJsonrpcEnvelopeError_MethodNotFound(t *testing.T) {
 	t.Parallel()
-	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32601, Message: "method not found"}, "/tmp/snap")
+	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32601, Message: "method not found"}, "/tmp/snap", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -223,7 +223,7 @@ func TestJsonrpcEnvelopeError_MethodNotFound(t *testing.T) {
 
 func TestJsonrpcEnvelopeError_GenericToolError(t *testing.T) {
 	t.Parallel()
-	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32000, Message: "server error"}, "")
+	err := jsonrpcEnvelopeError("tools/call", &RPCError{Code: -32000, Message: "server error"}, "", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -231,7 +231,7 @@ func TestJsonrpcEnvelopeError_GenericToolError(t *testing.T) {
 
 func TestJsonrpcEnvelopeError_DiscoveryMethod(t *testing.T) {
 	t.Parallel()
-	err := jsonrpcEnvelopeError("initialize", &RPCError{Code: -32000, Message: "failed"}, "")
+	err := jsonrpcEnvelopeError("initialize", &RPCError{Code: -32000, Message: "failed"}, "", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -294,7 +294,7 @@ func TestCallTool_RetriesOn502(t *testing.T) {
 func TestHttpStatusError_AllCodes(t *testing.T) {
 	t.Parallel()
 	for _, code := range []int{400, 401, 403, 404, 429, 500, 502, 503} {
-		err := httpStatusError("tools/call", "https://api.example.com", code, "")
+		err := httpStatusError("tools/call", "https://api.example.com", code, "", "")
 		if err == nil {
 			t.Fatalf("expected error for status %d", code)
 		}
@@ -303,7 +303,7 @@ func TestHttpStatusError_AllCodes(t *testing.T) {
 
 func TestHttpStatusError_WithSnapshot(t *testing.T) {
 	t.Parallel()
-	err := httpStatusError("initialize", "https://api.example.com", 500, "/tmp/snap.json")
+	err := httpStatusError("initialize", "https://api.example.com", 500, "/tmp/snap.json", "")
 	if err == nil {
 		t.Fatal("expected error")
 	}

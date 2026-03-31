@@ -344,6 +344,12 @@ func (c *Client) callJSONRPC(ctx context.Context, endpoint string, request reque
 	}
 
 	logging.LogRequest(c.FileLogger, request.Method, endpoint, c.ExecutionId, len(body))
+	// Log request body details for tools/call (arguments are sanitized).
+	if params, ok := request.Params.(map[string]any); ok {
+		toolName, _ := params["name"].(string)
+		args, _ := params["arguments"].(map[string]any)
+		logging.LogRequestBody(c.FileLogger, request.Method, c.ExecutionId, toolName, args)
+	}
 	callStart := time.Now()
 
 	resp, err := c.doWithRetry(ctx, endpoint, body)
@@ -351,6 +357,9 @@ func (c *Client) callJSONRPC(ctx context.Context, endpoint string, request reque
 		return err
 	}
 	defer resp.Body.Close()
+
+	// Extract trace ID from response headers for correlation.
+	headerTraceID := ExtractTraceIDFromHeaders(resp.Header)
 
 	data, err := io.ReadAll(io.LimitReader(resp.Body, config.MaxResponseBodySize))
 	logging.LogResponse(c.FileLogger, request.Method, endpoint, resp.StatusCode, len(data), time.Since(callStart), err)
@@ -361,6 +370,7 @@ func (c *Client) callJSONRPC(ctx context.Context, endpoint string, request reque
 			apperrors.WithReason(reasonForMethod(request.Method, "response_read_failed")),
 			apperrors.WithHint(i18n.T("检查服务连通性后重试；如持续失败，请确认 MCP 服务响应正常。")),
 			apperrors.WithActions(discoveryActions("")...),
+			apperrors.WithTraceID(headerTraceID),
 		)
 	}
 	snapshotPath := ""
@@ -369,7 +379,8 @@ func (c *Client) callJSONRPC(ctx context.Context, endpoint string, request reque
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return httpStatusError(request.Method, endpoint, resp.StatusCode, snapshotPath)
+		logging.LogResponseBody(c.FileLogger, request.Method, c.ExecutionId, resp.StatusCode, data, headerTraceID)
+		return httpStatusError(request.Method, endpoint, resp.StatusCode, snapshotPath, headerTraceID)
 	}
 
 	if !expectResponse {
@@ -385,10 +396,12 @@ func (c *Client) callJSONRPC(ctx context.Context, endpoint string, request reque
 			apperrors.WithHint(i18n.T("MCP 服务返回了无法解析的协议响应；检查服务版本或上游代理。")),
 			apperrors.WithActions(discoveryActions(snapshotPath)...),
 			apperrors.WithSnapshot(snapshotPath),
+			apperrors.WithTraceID(headerTraceID),
 		)
 	}
 	if envelope.Error != nil {
-		return jsonrpcEnvelopeError(request.Method, envelope.Error, snapshotPath)
+		logging.LogResponseBody(c.FileLogger, request.Method, c.ExecutionId, resp.StatusCode, data, headerTraceID)
+		return jsonrpcEnvelopeError(request.Method, envelope.Error, snapshotPath, headerTraceID)
 	}
 	if len(envelope.Result) == 0 {
 		return apperrors.NewDiscovery(
@@ -464,7 +477,14 @@ func (c *Client) doWithRetry(ctx context.Context, endpoint string, body []byte) 
 		}
 
 		if attempt < c.MaxRetries {
-			delay := c.retryDelayForAttempt(attempt, respRetryAfter(resp))
+			retryAfter := ""
+			statusForLog := 0
+			if resp != nil {
+				retryAfter = respRetryAfter(resp)
+				statusForLog = resp.StatusCode
+			}
+			delay := c.retryDelayForAttempt(attempt, retryAfter)
+			logging.LogRetryAttempt(c.FileLogger, "jsonrpc", c.ExecutionId, attempt, c.MaxRetries, statusForLog, delay, lastErr)
 			if err := c.sleepForRetry(ctx, delay); err != nil {
 				return nil, apperrors.NewDiscovery(
 					"request cancelled during retry",
@@ -657,16 +677,18 @@ func sanitizeBearerToken(raw string) string {
 	return token
 }
 
-func httpStatusError(method, endpoint string, statusCode int, snapshotPath string) error {
+func httpStatusError(method, endpoint string, statusCode int, snapshotPath, headerTraceID string) error {
 	message := fmt.Sprintf("request to %s returned HTTP %d", RedactURL(endpoint), statusCode)
 	opts := []apperrors.Option{
 		apperrors.WithOperation(method),
 		apperrors.WithReason(fmt.Sprintf("http_%d", statusCode)),
 		apperrors.WithRetryable(retryable(statusCode)),
 		apperrors.WithSnapshot(snapshotPath),
+		apperrors.WithTraceID(headerTraceID),
 		apperrors.WithCause(&CallError{
 			Stage:      CallStageHTTP,
 			HTTPStatus: statusCode,
+			TraceID:    headerTraceID,
 			Cause:      errors.New(message),
 		}),
 	}
@@ -706,18 +728,28 @@ func httpStatusError(method, endpoint string, statusCode int, snapshotPath strin
 	}
 }
 
-func jsonrpcEnvelopeError(method string, rpcErr *RPCError, snapshotPath string) error {
+func jsonrpcEnvelopeError(method string, rpcErr *RPCError, snapshotPath, headerTraceID string) error {
 	message := fmt.Sprintf("JSON-RPC %s failed with code %d: %s", method, rpcErr.Code, rpcErr.Message)
 	reason := reasonForMethod(method, "jsonrpc_"+jsonrpcCodeLabel(rpcErr.Code))
+
+	// Extract structured diagnostics from rpc error data.
+	diag := ExtractServerDiagnostics(rpcErr.Data)
+	// Prefer trace ID from structured data; fall back to HTTP header.
+	if diag.TraceID == "" && headerTraceID != "" {
+		diag.TraceID = headerTraceID
+	}
+
 	opts := []apperrors.Option{
 		apperrors.WithOperation(method),
 		apperrors.WithReason(reason),
 		apperrors.WithRPCCode(rpcErr.Code),
 		apperrors.WithRPCData(rpcErr.Data),
 		apperrors.WithSnapshot(snapshotPath),
+		apperrors.WithServerDiag(diag),
 		apperrors.WithCause(&CallError{
 			Stage:   CallStageJSONRPC,
 			RPCCode: rpcErr.Code,
+			TraceID: diag.TraceID,
 			Cause:   errors.New(message),
 		}),
 	}
