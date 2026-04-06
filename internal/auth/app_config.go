@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/helpers"
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/fileutil"
 )
 
 const (
@@ -102,7 +102,7 @@ func SaveAppConfig(configDir string, config *AppConfig) error {
 	}
 
 	path := GetAppConfigPath(configDir)
-	if err := helpers.AtomicWriteJSON(path, append(data, '\n')); err != nil {
+	if err := fileutil.AtomicWriteJSON(path, append(data, '\n')); err != nil {
 		return fmt.Errorf("writing app config: %w", err)
 	}
 

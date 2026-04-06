@@ -48,6 +48,16 @@ Example:
   dws oa approval detail --instance-id <ID> --format json
 ```
 
+说明: `detail` 现在优先走官方 OpenAPI，可返回 `formComponentValues` 等完整审批表单内容；`detail-openapi` 仍可作为兼容别名使用。
+
+### 通过 OpenAPI 查询审批实例完整详情
+```
+Usage:
+  dws oa approval detail-openapi --instance-id <ID> [flags]
+Example:
+  dws oa approval detail-openapi --instance-id <ID> --format json
+```
+
 ### 查询审批记录
 ```
 Usage:

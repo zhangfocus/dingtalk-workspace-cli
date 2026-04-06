@@ -14,10 +14,10 @@
 package helpers
 
 import (
-	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/fileutil"
 )
 
 // AtomicWrite writes data to path atomically by creating a temp file in the
@@ -29,69 +29,16 @@ import (
 // AtomicWrite avoids this: on any failure the temp file is cleaned up and the
 // original file remains untouched.
 func AtomicWrite(path string, data []byte, perm os.FileMode) error {
-	return atomicWrite(path, perm, func(tmp *os.File) error {
-		_, err := tmp.Write(data)
-		return err
-	})
+	return fileutil.AtomicWrite(path, data, perm)
 }
 
 // AtomicWriteFromReader atomically copies reader contents into path.
 func AtomicWriteFromReader(path string, reader io.Reader, perm os.FileMode) (int64, error) {
-	var copied int64
-	err := atomicWrite(path, perm, func(tmp *os.File) error {
-		n, err := io.Copy(tmp, reader)
-		copied = n
-		return err
-	})
-	if err != nil {
-		return 0, err
-	}
-	return copied, nil
+	return fileutil.AtomicWriteFromReader(path, reader, perm)
 }
 
 // AtomicWriteJSON is a convenience wrapper for writing JSON data atomically.
 // It uses 0600 permissions by default for sensitive data.
 func AtomicWriteJSON(path string, data []byte) error {
-	return AtomicWrite(path, data, 0600)
-}
-
-func atomicWrite(path string, perm os.FileMode, writeFn func(tmp *os.File) error) error {
-	dir := filepath.Dir(path)
-
-	// Ensure directory exists with secure permissions
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create directory: %w", err)
-	}
-
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
-	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
-	}
-	tmpName := tmp.Name()
-
-	success := false
-	defer func() {
-		if !success {
-			tmp.Close()
-			os.Remove(tmpName)
-		}
-	}()
-
-	if err := tmp.Chmod(perm); err != nil {
-		return fmt.Errorf("set permissions: %w", err)
-	}
-	if err := writeFn(tmp); err != nil {
-		return fmt.Errorf("write data: %w", err)
-	}
-	if err := tmp.Sync(); err != nil {
-		return fmt.Errorf("sync to disk: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("close temp file: %w", err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("rename to final: %w", err)
-	}
-	success = true
-	return nil
+	return fileutil.AtomicWriteJSON(path, data)
 }
