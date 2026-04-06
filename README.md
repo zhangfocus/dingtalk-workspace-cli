@@ -88,6 +88,24 @@ go build -o dws ./cmd       # build to current directory
 cp dws ~/.local/bin/         # install to PATH
 ```
 
+**Keep the upstream `dws` and a custom `dwsx` side by side**:
+
+If you maintain local enhancements from source, avoid replacing the system `dws` binary directly. Install a second binary name instead:
+
+```powershell
+go build -o .\build\dws.exe .\cmd\main.go
+Copy-Item .\build\dws.exe "$HOME\.local\bin\dwsx.exe" -Force
+
+dws auth status --format json
+dwsx auth status --format json
+dwsx oa approval detail --instance-id <PROCESS_INSTANCE_ID> --format json
+```
+
+This keeps:
+
+- `dws`: the upstream command
+- `dwsx`: your locally enhanced build
+
 > Requires Go 1.25+. Use `make package` to cross-compile for all platforms (macOS / Linux / Windows x amd64 / arm64).
 
 </details>

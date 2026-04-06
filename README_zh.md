@@ -88,6 +88,24 @@ go build -o dws ./cmd       # 编译到当前目录
 cp dws ~/.local/bin/         # 安装到 PATH
 ```
 
+**并行保留原版 `dws` 与自定义增强版 `dwsx`**：
+
+如果你基于源码做了本地增强（例如补充 OA 审批详情 OpenAPI 能力），建议不要直接覆盖系统里的 `dws`，而是额外安装一个独立命令名：
+
+```powershell
+go build -o .\build\dws.exe .\cmd\main.go
+Copy-Item .\build\dws.exe "$HOME\.local\bin\dwsx.exe" -Force
+
+dws auth status --format json
+dwsx auth status --format json
+dwsx oa approval detail --instance-id <审批实例ID> --format json
+```
+
+这样可以保持：
+
+- `dws`：继续使用官方原版命令
+- `dwsx`：运行你的本地增强版
+
 > 需要 Go 1.25+。也可以用 `make package` 构建所有平台产物（macOS / Linux / Windows × amd64 / arm64）。
 
 </details>
