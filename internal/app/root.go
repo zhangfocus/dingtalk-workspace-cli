@@ -242,7 +242,13 @@ func NewRootCommandWithEngine(rootCtx context.Context, engine *pipeline.Engine) 
 			// Configure global slog level based on --debug / --verbose flags.
 			configureLogLevel(flags)
 
-			return configureOutputSink(cmd)
+			if err := configureOutputSink(cmd); err != nil {
+				return err
+			}
+			if fn := edition.Get().AfterPersistentPreRun; fn != nil {
+				return fn(cmd, args)
+			}
+			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 			CloseFileLogger()

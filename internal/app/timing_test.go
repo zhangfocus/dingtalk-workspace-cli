@@ -136,6 +136,7 @@ func TestTimingCollector_ContextIntegration(t *testing.T) {
 }
 
 func TestTimingCollectorFromContext_NilContext(t *testing.T) {
+	//lint:ignore SA1012 Testing explicit nil-context guard in TimingCollectorFromContext.
 	tc := TimingCollectorFromContext(nil)
 	if tc != nil {
 		t.Error("TimingCollectorFromContext(nil) should return nil")

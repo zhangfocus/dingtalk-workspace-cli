@@ -31,6 +31,54 @@ import (
 func setupRuntimeCommandTest(t *testing.T) {
 	t.Helper()
 	t.Setenv("DWS_CONFIG_DIR", t.TempDir())
+
+	discoverySrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(contactDiscoveryResponse())
+	}))
+	t.Cleanup(func() { discoverySrv.Close() })
+	SetDiscoveryBaseURL(discoverySrv.URL)
+	t.Cleanup(func() { SetDiscoveryBaseURL("") })
+}
+
+func contactDiscoveryResponse() map[string]any {
+	return map[string]any{
+		"metadata": map[string]any{"count": 1, "nextCursor": ""},
+		"servers": []any{
+			map[string]any{
+				"server": map[string]any{
+					"name":        "Contact",
+					"description": "通讯录",
+					"remotes": []any{
+						map[string]any{
+							"type": "streamable-http",
+							"url":  "https://mcp.dingtalk.com/contact/v1",
+						},
+					},
+				},
+				"_meta": map[string]any{
+					"com.dingtalk.mcp.registry/metadata": map[string]any{
+						"status": "active", "isLatest": true,
+					},
+					"com.dingtalk.mcp.registry/cli": map[string]any{
+						"id":      "contact",
+						"command": "contact",
+						"groups": map[string]any{
+							"user": map[string]any{
+								"description": "用户管理",
+							},
+						},
+						"toolOverrides": map[string]any{
+							"get_current_user_profile": map[string]any{
+								"cliName": "get-self",
+								"group":   "user",
+								"flags":   map[string]any{},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
 }
 
 func TestRuntimeRunnerIncludesContentScanReportWhenEnabled(t *testing.T) {

@@ -81,6 +81,11 @@ type Hooks struct {
 	StaticServers         func() []ServerInfo                          // non-nil → skip Market discovery
 	VisibleProducts       func() []string                              // non-nil → override help visibility
 	RegisterExtraCommands func(root *cobra.Command, caller ToolCaller) // register overlay-only commands
+
+	// AfterPersistentPreRun runs at the end of the root PersistentPreRunE after
+	// global setup (OAuth flag overrides, log level, output sink). Overlays use
+	// this for clients that bypass the MCP runner (e.g. A2A gateway).
+	AfterPersistentPreRun func(cmd *cobra.Command, args []string) error
 }
 
 var (

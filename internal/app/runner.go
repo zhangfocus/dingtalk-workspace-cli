@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -302,24 +301,13 @@ func getCachedRuntimeToken(ctx context.Context) string {
 		defer func() { RecordTiming(ctx, "auth_keychain", time.Since(loadStart)) }()
 
 		configDir := defaultConfigDir()
-		provider := authpkg.NewOAuthProvider(configDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
-		configureOAuthProviderCompatibility(provider, configDir)
-		token, tokenErr := provider.GetAccessToken(ctx)
-		if tokenErr == nil && strings.TrimSpace(token) != "" {
-			cachedRuntimeToken = strings.TrimSpace(token)
-			return
-		}
-		// If the error is a decryption failure (corrupted data), log and bail out
+		token, tokenErr := resolveAccessTokenFromDir(ctx, configDir)
 		if tokenErr != nil && errors.Is(tokenErr, authpkg.ErrTokenDecryption) {
 			slog.Error(tokenErr.Error())
 			return
 		}
-		// Try legacy manager as fallback
-		manager := authpkg.NewManager(configDir, nil)
-		configureLegacyAuthManagerCompatibility(manager)
-		if token, _, err := manager.GetToken(); err == nil && strings.TrimSpace(token) != "" {
-			cachedRuntimeToken = strings.TrimSpace(token)
-			return
+		if token != "" {
+			cachedRuntimeToken = token
 		}
 	})
 	return cachedRuntimeToken

@@ -20,7 +20,7 @@ func VerifySHA256(filePath, expectedHash string) error {
 
 	expectedHash = strings.ToLower(strings.TrimSpace(expectedHash))
 	if actual != expectedHash {
-		return fmt.Errorf("SHA256 校验失败: 期望 %s..., 实际 %s...", expectedHash[:16], actual[:16])
+		return fmt.Errorf("SHA256 mismatch: want %s, got %s", expectedHash[:16], actual[:16])
 	}
 	return nil
 }
