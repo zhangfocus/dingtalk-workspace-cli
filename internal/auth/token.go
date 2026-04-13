@@ -20,7 +20,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"time"
+
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/pkg/edition"
 )
 
 // TokenData holds the OAuth token set persisted to disk.
@@ -61,44 +65,88 @@ func (t *TokenData) HasPersistentCode() bool {
 	return t != nil && t.PersistentCode != ""
 }
 
-// SaveTokenData saves TokenData to the platform keychain.
-// Uses the new keychain-based storage with random master key for better security.
+const tokenJSONFile = "token.json"
+
+// TokenMarker is a lightweight file the host application reads to detect
+// whether the CLI has a valid token without accessing the keychain.
+type TokenMarker struct {
+	UpdatedAt string `json:"updated_at"`
+}
+
+// WriteTokenMarker writes a token.json marker containing only an updated_at
+// timestamp. The host application uses this file's presence and mtime to
+// decide whether it needs to trigger a new auth exchange.
+func WriteTokenMarker(configDir string) error {
+	marker := TokenMarker{UpdatedAt: time.Now().Format(time.RFC3339)}
+	data, _ := json.MarshalIndent(marker, "", "  ")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		return err
+	}
+	tmp := filepath.Join(configDir, tokenJSONFile+".tmp")
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(configDir, tokenJSONFile))
+}
+
+// DeleteTokenMarker removes the token.json marker file.
+func DeleteTokenMarker(configDir string) error {
+	return os.Remove(filepath.Join(configDir, tokenJSONFile))
+}
+
+// SaveTokenData persists TokenData. When an edition hook (SaveToken) is
+// registered, it delegates entirely to the hook; otherwise it falls back
+// to the default keychain-based storage.
 func SaveTokenData(configDir string, data *TokenData) error {
+	if h := edition.Get(); h.SaveToken != nil {
+		jsonData, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return fmt.Errorf("marshaling token data for hook: %w", err)
+		}
+		return h.SaveToken(configDir, jsonData)
+	}
 	return SaveTokenDataKeychain(data)
 }
 
-// LoadTokenData reads TokenData from the platform keychain.
-// On first call, it attempts to migrate legacy .data file if present.
+// LoadTokenData reads TokenData. When an edition hook (LoadToken) is
+// registered, it delegates entirely to the hook; otherwise it falls back
+// to keychain with legacy .data migration.
 func LoadTokenData(configDir string) (*TokenData, error) {
-	// Try loading from new keychain first
+	if h := edition.Get(); h.LoadToken != nil {
+		jsonData, err := h.LoadToken(configDir)
+		if err != nil {
+			return nil, err
+		}
+		var td TokenData
+		if err := json.Unmarshal(jsonData, &td); err != nil {
+			return nil, fmt.Errorf("parsing token data from hook: %w", err)
+		}
+		return &td, nil
+	}
+
+	// Default: keychain with legacy .data migration
 	if TokenDataExistsKeychain() {
 		return LoadTokenDataKeychain()
 	}
-
-	// Fallback: try legacy .data file and migrate
 	data, err := LoadSecureTokenData(configDir)
 	if err != nil {
 		return nil, err
 	}
-
-	// Migrate to keychain for future use
 	if err := SaveTokenDataKeychain(data); err == nil {
-		// Successfully migrated, delete legacy file
 		_ = DeleteSecureData(configDir)
 	}
-
 	return data, nil
 }
 
-// DeleteTokenData removes token data from both keychain and legacy storage.
+// DeleteTokenData removes token data. When an edition hook (DeleteToken) is
+// registered, it delegates entirely to the hook; otherwise it falls back
+// to keychain + legacy cleanup.
 func DeleteTokenData(configDir string) error {
-	// Delete from keychain
+	if h := edition.Get(); h.DeleteToken != nil {
+		return h.DeleteToken(configDir)
+	}
 	keychainErr := DeleteTokenDataKeychain()
-
-	// Also clean up any legacy .data file
 	legacyErr := DeleteSecureData(configDir)
-
-	// Return keychain error if any, otherwise legacy error
 	if keychainErr != nil {
 		return keychainErr
 	}

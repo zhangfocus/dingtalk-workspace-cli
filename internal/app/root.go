@@ -15,6 +15,7 @@ package app
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -53,7 +54,10 @@ const recoveryEventStderrPrefix = "RECOVERY_EVENT_ID="
 // Execute runs the root command and returns the process exit code.
 func Execute() int {
 	timing := NewTimingCollector()
-	defer func() { timing.PrintIfEnabled() }()
+	defer func() {
+		timing.PrintIfEnabled()
+		timing.WriteReportIfEnabled(RawVersion(), SanitizeCommand(os.Args))
+	}()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -123,6 +127,11 @@ func flagErrorWithSuggestions(cmd *cobra.Command, err error) error {
 }
 
 func printExecutionError(root *cobra.Command, stdout, stderr io.Writer, err error) error {
+	var raw apperrors.RawStderrError
+	if stderrors.As(err, &raw) {
+		_, writeErr := fmt.Fprintln(stderr, raw.RawStderr())
+		return writeErr
+	}
 	if wantsJSONErrors(root) {
 		return apperrors.PrintJSON(stdout, err)
 	}
@@ -242,7 +251,13 @@ func NewRootCommandWithEngine(rootCtx context.Context, engine *pipeline.Engine) 
 			// Configure global slog level based on --debug / --verbose flags.
 			configureLogLevel(flags)
 
-			return configureOutputSink(cmd)
+			if err := configureOutputSink(cmd); err != nil {
+				return err
+			}
+			if fn := edition.Get().AfterPersistentPreRun; fn != nil {
+				return fn(cmd, args)
+			}
+			return nil
 		},
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
 			CloseFileLogger()
@@ -262,6 +277,8 @@ func NewRootCommandWithEngine(rootCtx context.Context, engine *pipeline.Engine) 
 		newAuthCommand(),
 		newSkillCommand(),
 		newCacheCommand(),
+		newConfigCommand(),
+		newDoctorCommand(),
 		newCompletionCommand(root),
 		newRecoveryCommand(rootCtx, loader, flags),
 		newUpgradeCommand(),
@@ -617,7 +634,10 @@ func hideNonDirectRuntimeCommands(root *cobra.Command) {
 	staticCommands := map[string]bool{
 		"auth":       true,
 		"cache":      true,
+		"config":     true,
+		"doctor":     true,
 		"completion": true,
+		"skill":      true,
 		"version":    true,
 		"help":       true,
 		"recovery":   true,
@@ -919,10 +939,21 @@ func CloseFileLogger() {
 }
 
 // newPipelineEngine creates and configures the pipeline engine with
-// the standard set of handlers for model input correction.
+// handlers for all five pipeline phases. The phases execute in order:
+// Register → PreParse → PostParse → PreRequest → PostResponse.
+//
+// Phases are invoked at their respective integration points:
+//   - Register:     during command tree construction (newMCPCommand)
+//   - PreParse:     before Cobra parses raw argv (RunPreParse)
+//   - PostParse:    after Cobra parsing, before validation (canonical RunE)
+//   - PreRequest:   after validation, before JSON-RPC dispatch (canonical RunE)
+//   - PostResponse: after transport returns, before stdout (canonical RunE)
 func newPipelineEngine() *pipeline.Engine {
 	engine := pipeline.NewEngine()
 	engine.RegisterAll(
+		// Register handler runs during command tree building.
+		handlers.RegisterHandler{},
+
 		// PreParse handlers run in order: alias → sticky → paramname.
 		// Alias normalises case first (--userId → --user-id), then
 		// sticky splits glued values (--limit100 → --limit 100), then
@@ -933,6 +964,12 @@ func newPipelineEngine() *pipeline.Engine {
 
 		// PostParse handlers normalise structured values.
 		handlers.ParamValueHandler{},
+
+		// PreRequest handler inspects the validated payload before dispatch.
+		handlers.PreRequestHandler{},
+
+		// PostResponse handler processes the response before output.
+		handlers.PostResponseHandler{},
 	)
 	return engine
 }

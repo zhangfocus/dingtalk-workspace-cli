@@ -18,7 +18,27 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/pkg/configmeta"
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/pkg/edition"
 )
+
+func init() {
+	configmeta.Register(configmeta.ConfigItem{
+		Name:         "DWS_CLIENT_ID",
+		Category:     configmeta.CategoryAuth,
+		Description:  "OAuth AppKey (DingTalk 应用凭证)",
+		DefaultValue: "(内置)",
+		Sensitive:    true,
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:         "DWS_CLIENT_SECRET",
+		Category:     configmeta.CategoryAuth,
+		Description:  "OAuth AppSecret (DingTalk 应用凭证)",
+		DefaultValue: "(内置)",
+		Sensitive:    true,
+	})
+}
 
 const (
 	// AuthorizeURL is the DingTalk OAuth authorization page.
@@ -110,7 +130,7 @@ func SetClientIDFromMCP(id string) {
 func IsClientIDFromMCP() bool {
 	clientMu.RLock()
 	defer clientMu.RUnlock()
-	return clientIDFromMCP
+	return clientIDFromMCP || edition.Get().AuthClientFromMCP
 }
 
 // GetUserAccessTokenURL returns the appropriate token exchange URL.
@@ -188,6 +208,9 @@ func ClientID() string {
 	clientMu.RUnlock()
 	if override != "" {
 		return override
+	}
+	if id := edition.Get().AuthClientID; id != "" {
+		return id
 	}
 	// Try loading from persisted app config
 	if id, _ := ResolveAppCredentials(getDefaultConfigDir()); id != "" {

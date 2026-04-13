@@ -19,7 +19,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -34,8 +33,50 @@ import (
 	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/logging"
 	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/safety"
 	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/internal/transport"
+	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/pkg/configmeta"
 	"github.com/DingTalk-Real-AI/dingtalk-workspace-cli/pkg/edition"
 )
+
+func init() {
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DWS_RUNTIME_CONTENT_SCAN",
+		Category:    configmeta.CategoryRuntime,
+		Description: "启用 MCP 响应内容安全扫描",
+		Example:     "true",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DWS_RUNTIME_CONTENT_SCAN_ENFORCE",
+		Category:    configmeta.CategoryRuntime,
+		Description: "内容安全扫描发现问题时阻断响应",
+		Example:     "true",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DWS_RUNTIME_CONTENT_SCAN_REPORT",
+		Category:    configmeta.CategoryRuntime,
+		Description: "在 JSON 输出中包含安全扫描报告",
+		Example:     "true",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DINGTALK_AGENT",
+		Category:    configmeta.CategoryExternal,
+		Description: "MCP 请求 x-dingtalk-agent 头",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DINGTALK_TRACE_ID",
+		Category:    configmeta.CategoryExternal,
+		Description: "MCP 请求 x-dingtalk-trace-id 头",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DINGTALK_SESSION_ID",
+		Category:    configmeta.CategoryExternal,
+		Description: "MCP 请求 x-dingtalk-session-id 头",
+	})
+	configmeta.Register(configmeta.ConfigItem{
+		Name:        "DINGTALK_MESSAGE_ID",
+		Category:    configmeta.CategoryExternal,
+		Description: "MCP 请求 x-dingtalk-message-id 头",
+	})
+}
 
 const (
 	runtimeContentScanEnv             = "DWS_RUNTIME_CONTENT_SCAN"
@@ -107,7 +148,10 @@ func (r *runtimeRunner) Run(ctx context.Context, invocation executor.Invocation)
 	catalog, err := r.loader.Load(ctx)
 	RecordTiming(ctx, "catalog_load", time.Since(catalogStart))
 	if err != nil {
-		return executor.Result{}, err
+		var degraded *cli.CatalogDegraded
+		if !errors.As(err, &degraded) {
+			return executor.Result{}, err
+		}
 	}
 
 	product, ok := catalog.FindProduct(invocation.CanonicalProduct)
@@ -229,6 +273,12 @@ func (r *runtimeRunner) executeInvocation(ctx context.Context, endpoint string, 
 		return executor.Result{}, err
 	}
 
+	if fn := edition.Get().ClassifyToolResult; fn != nil {
+		if editionErr := fn(callResult.Content); editionErr != nil {
+			return executor.Result{}, editionErr
+		}
+	}
+
 	if callResult.IsError {
 		diag := transport.ExtractServerDiagnosticsFromMap(callResult.Content)
 		logBusinessError(r.transport.FileLogger, "mcp_tool_error", invocation, callResult.Content, diag)
@@ -302,24 +352,13 @@ func getCachedRuntimeToken(ctx context.Context) string {
 		defer func() { RecordTiming(ctx, "auth_keychain", time.Since(loadStart)) }()
 
 		configDir := defaultConfigDir()
-		provider := authpkg.NewOAuthProvider(configDir, slog.New(slog.NewTextHandler(io.Discard, nil)))
-		configureOAuthProviderCompatibility(provider, configDir)
-		token, tokenErr := provider.GetAccessToken(ctx)
-		if tokenErr == nil && strings.TrimSpace(token) != "" {
-			cachedRuntimeToken = strings.TrimSpace(token)
-			return
-		}
-		// If the error is a decryption failure (corrupted data), log and bail out
+		token, tokenErr := resolveAccessTokenFromDir(ctx, configDir)
 		if tokenErr != nil && errors.Is(tokenErr, authpkg.ErrTokenDecryption) {
 			slog.Error(tokenErr.Error())
 			return
 		}
-		// Try legacy manager as fallback
-		manager := authpkg.NewManager(configDir, nil)
-		configureLegacyAuthManagerCompatibility(manager)
-		if token, _, err := manager.GetToken(); err == nil && strings.TrimSpace(token) != "" {
-			cachedRuntimeToken = strings.TrimSpace(token)
-			return
+		if token != "" {
+			cachedRuntimeToken = token
 		}
 	})
 	return cachedRuntimeToken

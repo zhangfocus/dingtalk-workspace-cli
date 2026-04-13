@@ -77,10 +77,33 @@ type Hooks struct {
 	OnAuthError   func(configDir string, err error) error
 	TokenProvider func(ctx context.Context, fallback func() (string, error)) (string, error)
 
+	// --- token persistence (overlay-only) ---
+	// When non-nil, these override the default keychain-based token storage.
+	// The data parameter is JSON-serialized TokenData.
+	SaveToken   func(configDir string, data []byte) error
+	LoadToken   func(configDir string) ([]byte, error)
+	DeleteToken func(configDir string) error
+
+	// --- auth credentials (overlay-only) ---
+	AuthClientID      string // non-empty overrides DefaultClientID
+	AuthClientFromMCP bool   // true routes OAuth through MCP endpoints
+
 	// --- product & endpoint ---
 	StaticServers         func() []ServerInfo                          // non-nil → skip Market discovery
 	VisibleProducts       func() []string                              // non-nil → override help visibility
 	RegisterExtraCommands func(root *cobra.Command, caller ToolCaller) // register overlay-only commands
+
+	// AfterPersistentPreRun runs at the end of the root PersistentPreRunE after
+	// global setup (OAuth flag overrides, log level, output sink). Overlays use
+	// this for clients that bypass the MCP runner (e.g. A2A gateway).
+	AfterPersistentPreRun func(cmd *cobra.Command, args []string) error
+
+	// ClassifyToolResult is called before the framework's default business-error
+	// detection on MCP tool results. If it returns a non-nil error, that error
+	// is used instead of the generic CategoryAPI business error. Editions use
+	// this to return custom error types with specific exit codes (e.g. PAT
+	// authorization errors with exit code 4).
+	ClassifyToolResult func(content map[string]any) error
 }
 
 var (
