@@ -119,12 +119,12 @@ func ResolveAccessToken(ctx context.Context, explicitToken string) (string, erro
 		return strings.TrimSpace(explicitToken), nil
 	}
 
-	clientID, clientSecret := authpkg.ResolveAppCredentials(configDir())
+	clientID, clientSecret := resolveAppCredentials()
 	if strings.TrimSpace(clientID) == "" || strings.TrimSpace(clientSecret) == "" {
 		return "", apperrors.NewAuth(
 			"未找到企业应用凭证，请先配置应用 AppKey/AppSecret",
 			apperrors.WithReason("missing_app_credentials"),
-			apperrors.WithHint("确认 ~/.dws/app.json 中已配置当前企业应用的 clientId/clientSecret"),
+			apperrors.WithHint("确认已通过 --client-id/--client-secret、环境变量或 ~/.dws/app.json 配置当前企业应用凭证"),
 		)
 	}
 
@@ -133,6 +133,30 @@ func ResolveAccessToken(ctx context.Context, explicitToken string) (string, erro
 		return "", err
 	}
 	return strings.TrimSpace(token), nil
+}
+
+func resolveAppCredentials() (clientID, clientSecret string) {
+	if id, secret := authpkg.ResolveAppCredentials(configDir()); strings.TrimSpace(id) != "" && strings.TrimSpace(secret) != "" {
+		return strings.TrimSpace(id), strings.TrimSpace(secret)
+	}
+
+	// Recover credentials from the logged-in token snapshot when app.json is absent.
+	if tokenData, err := authpkg.LoadTokenData(configDir()); err == nil && tokenData != nil {
+		id := strings.TrimSpace(tokenData.ClientID)
+		secret := strings.TrimSpace(authpkg.LoadClientSecret(id))
+		if id != "" && secret != "" {
+			return id, secret
+		}
+	}
+
+	// Fall back to the same resolution chain used by the main auth flow:
+	// runtime flags -> app config -> env -> compiled defaults.
+	id := strings.TrimSpace(authpkg.ClientID())
+	secret := strings.TrimSpace(authpkg.ClientSecret())
+	if id == "" || secret == "" || strings.HasPrefix(secret, "<") {
+		return "", ""
+	}
+	return id, secret
 }
 
 func fetchAppAccessToken(ctx context.Context, baseURL, appKey, appSecret string) (string, error) {
